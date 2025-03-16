@@ -21,7 +21,7 @@
 
         let scene, camera, renderer, particles, audioContext, analyser, dataArray, audio, redSphere;
         let rotationSpeed = 0.005;
-        let smoothedFrequencyData = []; // Store smoothed frequency data
+        let particleAmplitudes = []; // Store independent amplitudes
 
         function init() {
             scene = new THREE.Scene();
@@ -66,6 +66,7 @@
                 colors[i * 3] = color.r;
                 colors[i * 3 + 1] = color.g;
                 colors[i * 3 + 2] = color.b;
+                particleAmplitudes[i] = Math.random() * 0.5 + 0.5; // Random amplitude
             }
 
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -101,23 +102,10 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        function smoothFrequencyData(newData) {
-            const smoothingFactor = 0.8; // Adjust for smoother/faster response
-            if (smoothedFrequencyData.length !== newData.length) {
-                smoothedFrequencyData = [...newData]; // Initialize if lengths differ
-            } else {
-                for (let i = 0; i < newData.length; i++) {
-                    smoothedFrequencyData[i] = smoothedFrequencyData[i] * smoothingFactor + newData[i] * (1 - smoothingFactor);
-                }
-            }
-            return smoothedFrequencyData;
-        }
-
         function animate() {
             requestAnimationFrame(animate);
 
             analyser.getByteFrequencyData(dataArray);
-            const smoothedData = smoothFrequencyData(dataArray);
 
             const positions = particles.geometry.attributes.position.array;
             const particleCount = positions.length / 3;
@@ -126,13 +114,13 @@
                 const phi = Math.acos(-1 + (2 * i) / particleCount);
                 const theta = Math.sqrt(particleCount * Math.PI) * phi;
 
-                const binIndex = Math.floor((i / particleCount) * smoothedData.length);
-                let frequencyValue = smoothedData[binIndex];
+                const binIndex = Math.floor(Math.random() * dataArray.length); // Random frequency bin
+                let frequencyValue = dataArray[binIndex];
                 const normalizedFrequency = frequencyValue / 255;
-                const curvedFrequency = Math.pow(normalizedFrequency, 0.5);
+                const curvedFrequency = Math.pow(normalizedFrequency, 0.4); // Less smoothing
 
                 const minRadius = 5.05;
-                const radius = minRadius + curvedFrequency * 2;
+                const radius = minRadius + curvedFrequency * 2 * particleAmplitudes[i]; // Independent amplitude scaling
 
                 let offsetX = 0;
                 let offsetY = 0;
