@@ -21,7 +21,7 @@
 
         let scene, camera, renderer, particles, audioContext, analyser, dataArray, audio, redSphere;
         let rotationSpeed = 0.005;
-        let particleAmplitudes = []; // Store independent amplitudes
+        let particleAmplitudes = [];
 
         function init() {
             scene = new THREE.Scene();
@@ -49,7 +49,7 @@
             source.connect(analyser);
             analyser.connect(audioContext.destination);
 
-            const particleCount = 2048;
+            const particleCount = 1024;
             const geometry = new THREE.BufferGeometry();
             const positions = new Float32Array(particleCount * 3);
             const colors = new Float32Array(particleCount * 3);
@@ -61,18 +61,17 @@
                 positions[i * 3 + 1] = Math.sin(theta) * Math.sin(phi) * 5;
                 positions[i * 3 + 2] = Math.cos(phi) * 5;
 
-                const color = new THREE.Color();
-                color.setHSL(i / particleCount, 1.0, 0.5);
-                colors[i * 3] = color.r;
-                colors[i * 3 + 1] = color.g;
-                colors[i * 3 + 2] = color.b;
-                particleAmplitudes[i] = Math.random() * 0.5 + 0.5; // Random amplitude
+                colors[i * 3] = 0 / 255;
+                colors[i * 3 + 1] = 0 / 255;
+                colors[i * 3 + 2] = 255 / 255;
+
+                particleAmplitudes[i] = Math.random() * 0.5 + 0.5;
             }
 
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-            const material = new THREE.PointsMaterial({ size: 0.05, vertexColors: true });
+            const material = new THREE.PointsMaterial({ size: 0.1, vertexColors: true });
             particles = new THREE.Points(geometry, material);
             scene.add(particles);
 
@@ -108,19 +107,21 @@
             analyser.getByteFrequencyData(dataArray);
 
             const positions = particles.geometry.attributes.position.array;
+            const colors = particles.geometry.attributes.color.array;
             const particleCount = positions.length / 3;
 
             for (let i = 0; i < particleCount; i++) {
                 const phi = Math.acos(-1 + (2 * i) / particleCount);
                 const theta = Math.sqrt(particleCount * Math.PI) * phi;
 
-                const binIndex = Math.floor(Math.random() * dataArray.length); // Random frequency bin
+                const binIndex = Math.floor(Math.random() * dataArray.length);
                 let frequencyValue = dataArray[binIndex];
                 const normalizedFrequency = frequencyValue / 255;
-                const curvedFrequency = Math.pow(normalizedFrequency, 0.4); // Less smoothing
+                const curvedFrequency = Math.pow(normalizedFrequency, 0.4);
 
-                const minRadius = 5.05;
-                const radius = minRadius + curvedFrequency * 2 * particleAmplitudes[i]; // Independent amplitude scaling
+                const minRadius = 4.0;
+                const bounceMultiplier = 2.0 + normalizedFrequency * 3.0; // Dynamic bounce multiplier
+                const radius = minRadius + curvedFrequency * bounceMultiplier * particleAmplitudes[i];
 
                 let offsetX = 0;
                 let offsetY = 0;
@@ -129,6 +130,14 @@
                     offsetX = (Math.random() - 0.5) * 0.05;
                     offsetY = (Math.random() - 0.5) * 0.05;
                     offsetZ = (Math.random() - 0.5) * 0.05;
+
+                    colors[i * 3] = 0 / 255;
+                    colors[i * 3 + 1] = 0 / 255;
+                    colors[i * 3 + 2] = 255 / 255;
+                } else {
+                    colors[i * 3] = 0 / 255;
+                    colors[i * 3 + 1] = 0 / 255;
+                    colors[i * 3 + 2] = 255 / 255;
                 }
 
                 positions[i * 3] = Math.cos(theta) * Math.sin(phi) * radius + offsetX;
@@ -137,9 +146,27 @@
             }
 
             particles.geometry.attributes.position.needsUpdate = true;
+            particles.geometry.attributes.color.needsUpdate = true;
 
+            // Audio-driven rotation speed
+            const normalizedFrequency = dataArray[0] / 255;
+            rotationSpeed = 0.005 + normalizedFrequency * 0.01;
             particles.rotation.y += rotationSpeed;
             redSphere.rotation.y += rotationSpeed;
+
+            // Audio-driven color saturation
+            for (let i = 0; i < colors.length; i += 3) {
+                const saturation = 0.5 + normalizedFrequency * 0.5;
+                const color = new THREE.Color(colors[i], colors[i + 1], colors[i + 2]);
+                const hsl = {};
+                color.getHSL(hsl);
+                hsl.s = saturation;
+                color.setHSL(hsl.h, hsl.s, hsl.l);
+                colors[i] = color.r;
+                colors[i + 1] = color.g;
+                colors[i + 2] = color.b;
+            }
+            particles.geometry.attributes.color.needsUpdate = true;
 
             renderer.render(scene, camera);
         }
