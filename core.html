@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio Visualizer - Sphere</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        let scene, camera, renderer, particles, audioContext, analyser, dataArray, audio, redSphere;
+        let rotationSpeed = 0.005;
+        let smoothedFrequencyData = []; // Store smoothed frequency data
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 10;
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 4096;
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+
+            audio = new Audio('The.mp3');
+            audio.crossOrigin = "anonymous";
+            audio.loop = true;
+            const source = audioContext.createMediaElementSource(audio);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+
+            const particleCount = 2048;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount; i++) {
+                const phi = Math.acos(-1 + (2 * i) / particleCount);
+                const theta = Math.sqrt(particleCount * Math.PI) * phi;
+                positions[i * 3] = Math.cos(theta) * Math.sin(phi) * 5;
+                positions[i * 3 + 1] = Math.sin(theta) * Math.sin(phi) * 5;
+                positions[i * 3 + 2] = Math.cos(phi) * 5;
+
+                const color = new THREE.Color();
+                color.setHSL(i / particleCount, 1.0, 0.5);
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+            const material = new THREE.PointsMaterial({ size: 0.05, vertexColors: true });
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+
+            const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
+            const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
+            redSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            scene.add(redSphere);
+
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('click', () => {
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                if (audio.paused) {
+                    audio.play();
+                } else {
+                    audio.pause();
+                }
+            });
+
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function smoothFrequencyData(newData) {
+            const smoothingFactor = 0.8; // Adjust for smoother/faster response
+            if (smoothedFrequencyData.length !== newData.length) {
+                smoothedFrequencyData = [...newData]; // Initialize if lengths differ
+            } else {
+                for (let i = 0; i < newData.length; i++) {
+                    smoothedFrequencyData[i] = smoothedFrequencyData[i] * smoothingFactor + newData[i] * (1 - smoothingFactor);
+                }
+            }
+            return smoothedFrequencyData;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            analyser.getByteFrequencyData(dataArray);
+            const smoothedData = smoothFrequencyData(dataArray);
+
+            const positions = particles.geometry.attributes.position.array;
+            const particleCount = positions.length / 3;
+
+            for (let i = 0; i < particleCount; i++) {
+                const phi = Math.acos(-1 + (2 * i) / particleCount);
+                const theta = Math.sqrt(particleCount * Math.PI) * phi;
+
+                const binIndex = Math.floor((i / particleCount) * smoothedData.length);
+                let frequencyValue = smoothedData[binIndex];
+                const normalizedFrequency = frequencyValue / 255;
+                const curvedFrequency = Math.pow(normalizedFrequency, 0.5);
+
+                const minRadius = 5.05;
+                const radius = minRadius + curvedFrequency * 2;
+
+                let offsetX = 0;
+                let offsetY = 0;
+                let offsetZ = 0;
+                if (Math.abs(Math.cos(phi)) > 0.99) {
+                    offsetX = (Math.random() - 0.5) * 0.05;
+                    offsetY = (Math.random() - 0.5) * 0.05;
+                    offsetZ = (Math.random() - 0.5) * 0.05;
+                }
+
+                positions[i * 3] = Math.cos(theta) * Math.sin(phi) * radius + offsetX;
+                positions[i * 3 + 1] = Math.sin(theta) * Math.sin(phi) * radius + offsetY;
+                positions[i * 3 + 2] = Math.cos(phi) * radius + offsetZ;
+            }
+
+            particles.geometry.attributes.position.needsUpdate = true;
+
+            particles.rotation.y += rotationSpeed;
+            redSphere.rotation.y += rotationSpeed;
+
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
